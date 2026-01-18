@@ -13,7 +13,7 @@ SATURATION = 1.35    # 1.0 = neutral
 
 S_CURVE = 0.9        # <1 = softer highlights
 VIGNETTE = 0.4       # 0–0.6 safe
-COLOR_BLEED = 2      # pixels
+COLOR_BLEED = 0.5      # pixels
 
 WIDTH, HEIGHT = 1280, 720
 OUTPUT = "filmic_output.jpg"
