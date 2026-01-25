@@ -1,20 +1,24 @@
 from picamera2 import Picamera2
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance
 import numpy as np
 import time
 import os
 from datetime import datetime
 
-# ===== CONFIG =====
+# ================= CONFIG =================
 OUTPUT_DIR = "/home/pi/Pictures"
 RESOLUTION = (1024, 768)
-COUNTDOWN = 3  # seconds
-GRAIN_LEVEL = 10  # intensity of grain
-# ==================
+COUNTDOWN = 3
+
+# White balance tuning (CRITICAL)
+RED_GAIN = 1.6
+BLUE_GAIN = 1.2
+
+GRAIN_STRENGTH = 8
+# =========================================
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Initialize camera
 picam2 = Picamera2()
 config = picam2.create_still_configuration(
     main={"size": RESOLUTION, "format": "RGB888"},
@@ -22,74 +26,82 @@ config = picam2.create_still_configuration(
 )
 picam2.configure(config)
 picam2.start()
-time.sleep(2)
 
-print("Camera ready! Press Enter to take a photo. Type 'q' + Enter to quit.")
+# Lock white balance (THIS fixes the blue problem)
+picam2.set_controls({
+    "AwbEnable": False,
+    "ColourGains": (RED_GAIN, BLUE_GAIN)
+})
+
+time.sleep(2)
+print("Camera ready.")
+print("Press ENTER to take a photo. Type 'q' then ENTER to quit.")
 
 def apply_fuji_style(img: Image.Image) -> Image.Image:
-    """Apply vintage Fuji-style effect using PIL."""
-    # Slight contrast reduction (fade blacks)
-    enhancer = ImageEnhance.Contrast(img)
-    img = enhancer.enhance(0.95)
+    # Slight contrast fade
+    img = ImageEnhance.Contrast(img).enhance(0.95)
 
-    # Slight brightness boost
-    enhancer = ImageEnhance.Brightness(img)
-    img = enhancer.enhance(1.05)
+    # Slight brightness lift
+    img = ImageEnhance.Brightness(img).enhance(1.05)
+
+    # Gentle saturation
+    img = ImageEnhance.Color(img).enhance(1.1)
 
     # Split channels
     r, g, b = img.split()
 
-    # Fuji tone adjustments
-    r = r.point(lambda i: min(255, i * 1.08 + 3))  # warm highlights
-    g = g.point(lambda i: min(255, i * 1.05 + 2))  # green midtones
-    b = b.point(lambda i: i * 0.92)                # cool shadows
+    # Fuji-style color bias
+    r = r.point(lambda i: min(255, i * 1.05 + 2))
+    g = g.point(lambda i: min(255, i * 1.03 + 1))
+    b = b.point(lambda i: i * 0.95)
 
     img = Image.merge("RGB", (r, g, b))
 
-    # Add grain
+    # Film grain
     arr = np.array(img).astype(np.int16)
-    grain = np.random.randint(-GRAIN_LEVEL, GRAIN_LEVEL, arr.shape, dtype=np.int16)
+    grain = np.random.randint(-GRAIN_STRENGTH, GRAIN_STRENGTH, arr.shape)
     arr = np.clip(arr + grain, 0, 255).astype(np.uint8)
     img = Image.fromarray(arr)
 
     # Vignette
-    rows, cols = arr.shape[:2]
-    y, x = np.ogrid[:rows, :cols]
-    center_y, center_x = rows / 2, cols / 2
-    distance = np.sqrt((x - center_x)**2 + (y - center_y)**2)
-    max_distance = np.sqrt(center_x**2 + center_y**2)
-    mask = 1 - 0.5 * (distance / max_distance)  # strength of vignette
-    mask = np.clip(mask, 0.5, 1)
-    arr = np.array(img)
-    arr = (arr * mask[..., None]).astype(np.uint8)
-    img = Image.fromarray(arr)
+    h, w = arr.shape[:2]
+    y, x = np.ogrid[:h, :w]
+    center_y, center_x = h / 2, w / 2
+    dist = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+    max_dist = np.sqrt(center_x**2 + center_y**2)
+    mask = 1 - 0.4 * (dist / max_dist)
+    mask = np.clip(mask, 0.6, 1.0)
 
-    return img
+    arr = (arr * mask[..., None]).astype(np.uint8)
+    return Image.fromarray(arr)
 
 while True:
-    user_input = input("Take a photo? ")
-    if user_input.lower() == 'q':
+    cmd = input("Ready: ")
+    if cmd.lower() == "q":
         break
 
-    # Countdown
+    print("Hold still...")
     for i in range(COUNTDOWN, 0, -1):
-        print(f"{i}...")
+        print(i)
         time.sleep(1)
 
-    # Capture frame
-    img_array = picam2.capture_array()
-    img = Image.fromarray(img_array)
-    print("Photo taken!")
+    frame = picam2.capture_array()
+    print("Photo captured.")
 
-    # Apply Fuji effect
+    img = Image.fromarray(frame)
     img = apply_fuji_style(img)
 
-    # Save
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"fuji_{timestamp}.jpg"
     path = os.path.join(OUTPUT_DIR, filename)
-    img.save(path)
-    print(f"Saved image to {path}")
 
-print("Script finished. You can safely move the camera.")
+    img.save(path, quality=92, subsampling=0)
+
+    # Force disk write
+    os.sync()
+
+    print(f"Saved: {path}")
+    print("You can move the camera now.\n")
+
+print("Done.")
 picam2.stop()
