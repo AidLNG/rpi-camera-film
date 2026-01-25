@@ -7,15 +7,15 @@ import time
 # ADJUSTABLE CONTROLS
 # ==========================
 
-EXPOSURE = 1.05      # brightness
-CONTRAST = 1.1       # 1.0 = neutral
-SATURATION = 1.35    # 1.0 = neutral
+EXPOSURE = 1.0     # brightness
+CONTRAST = 0.8       # 1.0 = neutral
+SATURATION = 1.10   # 1.0 = neutral
 
 S_CURVE = 0.9        # <1 = softer highlights
-VIGNETTE = 0.4       # 0–0.6 safe
+VIGNETTE = 0.2       # 0–0.6 safe
 COLOR_BLEED = 0.5      # pixels
 
-WIDTH, HEIGHT = 1280, 720
+WIDTH, HEIGHT = 1920, 1080
 OUTPUT = "filmic_output.jpg"
 
 # ==========================
