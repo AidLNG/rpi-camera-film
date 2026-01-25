@@ -1,5 +1,5 @@
 from picamera2 import Picamera2
-import cv2
+from PIL import Image, ImageEnhance, ImageFilter
 import numpy as np
 import time
 import os
@@ -8,8 +8,8 @@ from datetime import datetime
 # ===== CONFIG =====
 OUTPUT_DIR = "/home/pi/Pictures"
 RESOLUTION = (1024, 768)
-FRAME_RATE = 5
-COUNTDOWN = 3  # seconds before snap
+COUNTDOWN = 3  # seconds
+GRAIN_LEVEL = 10  # intensity of grain
 # ==================
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -22,10 +22,49 @@ config = picam2.create_still_configuration(
 )
 picam2.configure(config)
 picam2.start()
-picam2.set_controls({"FrameRate": FRAME_RATE})
 time.sleep(2)
 
 print("Camera ready! Press Enter to take a photo. Type 'q' + Enter to quit.")
+
+def apply_fuji_style(img: Image.Image) -> Image.Image:
+    """Apply vintage Fuji-style effect using PIL."""
+    # Slight contrast reduction (fade blacks)
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(0.95)
+
+    # Slight brightness boost
+    enhancer = ImageEnhance.Brightness(img)
+    img = enhancer.enhance(1.05)
+
+    # Split channels
+    r, g, b = img.split()
+
+    # Fuji tone adjustments
+    r = r.point(lambda i: min(255, i * 1.08 + 3))  # warm highlights
+    g = g.point(lambda i: min(255, i * 1.05 + 2))  # green midtones
+    b = b.point(lambda i: i * 0.92)                # cool shadows
+
+    img = Image.merge("RGB", (r, g, b))
+
+    # Add grain
+    arr = np.array(img).astype(np.int16)
+    grain = np.random.randint(-GRAIN_LEVEL, GRAIN_LEVEL, arr.shape, dtype=np.int16)
+    arr = np.clip(arr + grain, 0, 255).astype(np.uint8)
+    img = Image.fromarray(arr)
+
+    # Vignette
+    rows, cols = arr.shape[:2]
+    y, x = np.ogrid[:rows, :cols]
+    center_y, center_x = rows / 2, cols / 2
+    distance = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+    max_distance = np.sqrt(center_x**2 + center_y**2)
+    mask = 1 - 0.5 * (distance / max_distance)  # strength of vignette
+    mask = np.clip(mask, 0.5, 1)
+    arr = np.array(img)
+    arr = (arr * mask[..., None]).astype(np.uint8)
+    img = Image.fromarray(arr)
+
+    return img
 
 while True:
     user_input = input("Take a photo? ")
@@ -37,44 +76,20 @@ while True:
         print(f"{i}...")
         time.sleep(1)
 
-    # Capture frame (RGB)
-    img = picam2.capture_array()
+    # Capture frame
+    img_array = picam2.capture_array()
+    img = Image.fromarray(img_array)
     print("Photo taken!")
 
-    # ===== FILM LOOK (RGB SPACE!) =====
-    # Lift blacks + soften contrast
-    img = cv2.convertScaleAbs(img, alpha=0.95, beta=10)
+    # Apply Fuji effect
+    img = apply_fuji_style(img)
 
-    # Fujifilm tone mapping (RGB order)
-    r, g, b = cv2.split(img)
-    r = cv2.convertScaleAbs(r, alpha=1.08, beta=3)  # warm highlights
-    g = cv2.convertScaleAbs(g, alpha=1.05, beta=2)  # green midtones
-    b = cv2.convertScaleAbs(b, alpha=0.92, beta=0)  # cool shadows
-    img = cv2.merge([r, g, b])
-
-    # Subtle grain
-    grain = np.random.randint(-6, 6, img.shape, dtype=np.int16)
-    img = np.clip(img.astype(np.int16) + grain, 0, 255).astype(np.uint8)
-
-    # Vignette
-    rows, cols = img.shape[:2]
-    kernel_x = cv2.getGaussianKernel(cols, cols / 1.8)
-    kernel_y = cv2.getGaussianKernel(rows, rows / 1.8)
-    mask = kernel_y @ kernel_x.T
-    mask = mask / mask.max()
-    img = (img * mask[..., None]).astype(np.uint8)
-
-    # ===== SAVE IMAGE =====
-    # Convert RGB -> BGR *only once* for OpenCV saving
-    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    # Save
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"fuji_{timestamp}.jpg"
     path = os.path.join(OUTPUT_DIR, filename)
-
-    if cv2.imwrite(path, img_bgr):
-        print(f"Saved image to {path}")
-    else:
-        print("Failed to save image!")
+    img.save(path)
+    print(f"Saved image to {path}")
 
 print("Script finished. You can safely move the camera.")
 picam2.stop()
