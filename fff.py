@@ -7,12 +7,11 @@ from datetime import datetime
 
 # ===== CONFIG =====
 OUTPUT_DIR = "/home/pi/Pictures"
-RESOLUTION = (1024, 768)  # Safe for Pi Zero 2 W
+RESOLUTION = (1024, 768)   # Safe for Pi Zero 2 W
 FRAME_RATE = 5
-COUNTDOWN = 3  # seconds before snap
+COUNTDOWN = 3               # seconds before snap
 # ==================
 
-# Ensure output folder exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Initialize camera
@@ -26,7 +25,7 @@ picam2.start()
 picam2.set_controls({"FrameRate": FRAME_RATE})
 time.sleep(2)
 
-print("Camera ready! Press Enter to take a photo. Type 'q' and Enter to quit.")
+print("Camera ready! Press Enter to take a photo. Type 'q' + Enter to quit.")
 
 while True:
     user_input = input("Take a photo? ")
@@ -38,21 +37,31 @@ while True:
         print(f"{i}...")
         time.sleep(1)
 
-    # Capture frame
-    img = picam2.capture_array()
+    # Capture frame (RGB)
+    img_rgb = picam2.capture_array()
     print("Photo taken!")
 
-    # ===== FILM LOOK =====
-    img = cv2.convertScaleAbs(img, alpha=0.95, beta=12)  # Lift blacks
+    # Convert to BGR for OpenCV-safe processing
+    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
-    r, g, b = cv2.split(img)
-    r = cv2.convertScaleAbs(r, alpha=1.05, beta=2)
-    g = cv2.convertScaleAbs(g, alpha=1.03, beta=1)
-    b = cv2.convertScaleAbs(b, alpha=0.95, beta=0)
-    img = cv2.merge([r, g, b])
+    # ===== FILM LOOK (VINTAGE FUJI) =====
+    # Lift blacks slightly and soften contrast
+    img = cv2.convertScaleAbs(img, alpha=0.95, beta=10)
 
-    # Grain
-    grain = np.random.randint(-5, 5, img.shape, dtype=np.int16)
+    # Fujifilm tone mapping (subtle vintage effect)
+    b, g, r = cv2.split(img)
+
+    # Warm reds
+    r = cv2.convertScaleAbs(r, alpha=1.08, beta=3)
+    # Slightly boost greens (Fuji midtone signature)
+    g = cv2.convertScaleAbs(g, alpha=1.05, beta=2)
+    # Slightly reduce blues in shadows
+    b = cv2.convertScaleAbs(b, alpha=0.92, beta=0)
+
+    img = cv2.merge([b, g, r])
+
+    # Subtle grain (memory-safe)
+    grain = np.random.randint(-6, 6, img.shape, dtype=np.int16)
     img = np.clip(img.astype(np.int16) + grain, 0, 255).astype(np.uint8)
 
     # Vignette
@@ -63,14 +72,11 @@ while True:
     mask = mask / mask.max()
     img = (img * mask[..., None]).astype(np.uint8)
 
-    # Convert RGB → BGR for saving
-    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-    # Save
+    # Save (already BGR)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"fuji_{timestamp}.jpg"
     path = os.path.join(OUTPUT_DIR, filename)
-    if cv2.imwrite(path, img_bgr):
+    if cv2.imwrite(path, img):
         print(f"Saved image to {path}")
     else:
         print("Failed to save image!")
