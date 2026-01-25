@@ -35,27 +35,27 @@ class FujiFilmProcessor:
         time.sleep(2)
         
     def apply_extreme_vintage_colors(self, img):
-        """Apply unrealistically strong vintage color grading"""
+        """Apply subtle film-like color grading"""
         img = img.astype(np.float32, copy=False)
         img *= (1.0 / 255.0)
         
-        # Extreme color shifts for that "too vintage" look
+        # Gentle color shifts for authentic film look
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         
-        # Strong green shift (classic Fuji characteristic, exaggerated)
-        lab[:, :, 1] -= 12
+        # Subtle green shift (classic Fuji characteristic)
+        lab[:, :, 1] -= 6
         
-        # Heavy warm/yellow cast
-        lab[:, :, 2] += 15
+        # Mild warm/yellow cast
+        lab[:, :, 2] += 8
         
         img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
         del lab
         gc.collect()
         
-        # Exaggerated cyan shadows
+        # Gentle cyan tint in shadows
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        shadow_mask = hsv[:, :, 2] < 0.4
-        hsv[shadow_mask, 0] = np.clip(hsv[shadow_mask, 0] + 0.15, 0, 1)
+        shadow_mask = hsv[:, :, 2] < 0.3
+        hsv[shadow_mask, 0] = np.clip(hsv[shadow_mask, 0] + 0.06, 0, 1)
         
         img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         del hsv, shadow_mask
@@ -66,31 +66,31 @@ class FujiFilmProcessor:
         return img.astype(np.uint8, copy=False)
     
     def apply_extreme_film_curve(self, img):
-        """Apply aggressive S-curve with heavily lifted blacks for faded look"""
+        """Apply moderate S-curve with lifted blacks for film look"""
         img = img.astype(np.float32, copy=False)
         img *= (1.0 / 255.0)
         
-        # Much stronger black lift for that washed-out vintage look
-        black_lift = 0.15  # Was 0.08, now much more faded
-        contrast = 0.75    # Reduced contrast for softer, vintage feel
+        # Moderate black lift for subtle faded look
+        black_lift = 0.10
+        contrast = 0.82
         
         np.power(img, contrast, out=img)
         img *= (1 - black_lift)
         img += black_lift
         
-        # Compress highlights slightly
-        highlight_mask = img > 0.7
-        img[highlight_mask] = 0.7 + (img[highlight_mask] - 0.7) * 0.6
+        # Gentle highlight compression
+        highlight_mask = img > 0.75
+        img[highlight_mask] = 0.75 + (img[highlight_mask] - 0.75) * 0.7
         
         np.clip(img, 0, 1, out=img)
         img *= 255
         return img.astype(np.uint8, copy=False)
     
-    def add_heavy_grain(self, img, intensity=0.025):
-        """Add prominent film grain for authentic vintage texture"""
+    def add_heavy_grain(self, img, intensity=0.015):
+        """Add subtle film grain for authentic texture"""
         h, w = img.shape[:2]
         
-        # Generate coarser, more visible grain
+        # Generate subtle, realistic grain
         chunk_size = 256
         img_float = img.astype(np.float32, copy=False)
         
@@ -99,60 +99,58 @@ class FujiFilmProcessor:
                 end_i = min(i + chunk_size, h)
                 end_j = min(j + chunk_size, w)
                 
-                # Add both fine and coarse grain
+                # Just fine grain, no coarse layer
                 fine_grain = np.random.normal(0, intensity * 255, 
                                             (end_i - i, end_j - j, 3)).astype(np.float32)
-                coarse_grain = np.random.normal(0, intensity * 150,
-                                              (end_i - i, end_j - j, 3)).astype(np.float32)
                 
-                img_float[i:end_i, j:end_j] += fine_grain + coarse_grain
+                img_float[i:end_i, j:end_j] += fine_grain
                 
         np.clip(img_float, 0, 255, out=img_float)
         return img_float.astype(np.uint8, copy=False)
     
-    def add_extreme_expired_effects(self, img, strength=0.8):
-        """Heavy expired film effects - light leaks, color shifts, vignette"""
+    def add_extreme_expired_effects(self, img, strength=0.5):
+        """Subtle expired film effects - gentle color shifts and light vignette"""
         h, w = img.shape[:2]
         
-        # Random strong color shifts
+        # Gentle random color shifts
         shift_type = np.random.random()
         if shift_type > 0.66:
-            # Heavy magenta shift
-            img[:, :, 2] = np.clip(img[:, :, 2].astype(np.int16) + int(strength * 20), 0, 255).astype(np.uint8)
-            img[:, :, 0] = np.clip(img[:, :, 0].astype(np.int16) + int(strength * 15), 0, 255).astype(np.uint8)
+            # Mild magenta shift
+            img[:, :, 2] = np.clip(img[:, :, 2].astype(np.int16) + int(strength * 8), 0, 255).astype(np.uint8)
+            img[:, :, 0] = np.clip(img[:, :, 0].astype(np.int16) + int(strength * 6), 0, 255).astype(np.uint8)
         elif shift_type > 0.33:
-            # Heavy yellow/orange shift
-            img[:, :, 2] = np.clip(img[:, :, 2].astype(np.int16) + int(strength * 25), 0, 255).astype(np.uint8)
-            img[:, :, 1] = np.clip(img[:, :, 1].astype(np.int16) + int(strength * 18), 0, 255).astype(np.uint8)
+            # Mild yellow/warm shift
+            img[:, :, 2] = np.clip(img[:, :, 2].astype(np.int16) + int(strength * 10), 0, 255).astype(np.uint8)
+            img[:, :, 1] = np.clip(img[:, :, 1].astype(np.int16) + int(strength * 7), 0, 255).astype(np.uint8)
         else:
-            # Green/cyan shift
-            img[:, :, 1] = np.clip(img[:, :, 1].astype(np.int16) + int(strength * 20), 0, 255).astype(np.uint8)
-            img[:, :, 0] = np.clip(img[:, :, 0].astype(np.int16) + int(strength * 12), 0, 255).astype(np.uint8)
+            # Mild green/cyan shift
+            img[:, :, 1] = np.clip(img[:, :, 1].astype(np.int16) + int(strength * 8), 0, 255).astype(np.uint8)
+            img[:, :, 0] = np.clip(img[:, :, 0].astype(np.int16) + int(strength * 5), 0, 255).astype(np.uint8)
         
-        # Mild vignette
+        # Very mild vignette - barely noticeable
         y, x = np.ogrid[:h, :w]
         cx, cy = w // 2, h // 2
         
         r = np.sqrt(((x - cx) / cx) ** 2 + ((y - cy) / cy) ** 2)
-        # Gentle, subtle vignette
-        vignette = 1 - (strength * 0.15 * np.clip(r - 0.6, 0, 1.2))
+        # Extremely subtle vignette
+        vignette = 1 - (strength * 0.08 * np.clip(r - 0.7, 0, 1.0))
         
         img_float = img.astype(np.float32, copy=False)
         img_float *= vignette[:, :, np.newaxis]
         
-        # Add random light leak in corner
-        if np.random.random() > 0.5:
+        # Very rare, subtle light leak
+        if np.random.random() > 0.8:  # Only 20% chance
             corner = np.random.choice(['tl', 'tr', 'bl', 'br'])
-            leak_strength = strength * 80
+            leak_strength = strength * 30  # Much subtler
             
             if corner == 'tl':
-                img_float[0:h//3, 0:w//3] += leak_strength
+                img_float[0:h//4, 0:w//4] += leak_strength
             elif corner == 'tr':
-                img_float[0:h//3, 2*w//3:w] += leak_strength
+                img_float[0:h//4, 3*w//4:w] += leak_strength
             elif corner == 'bl':
-                img_float[2*h//3:h, 0:w//3] += leak_strength
+                img_float[3*h//4:h, 0:w//4] += leak_strength
             else:
-                img_float[2*h//3:h, 2*w//3:w] += leak_strength
+                img_float[3*h//4:h, 3*w//4:w] += leak_strength
         
         del r, vignette
         gc.collect()
@@ -160,8 +158,8 @@ class FujiFilmProcessor:
         np.clip(img_float, 0, 255, out=img_float)
         return img_float.astype(np.uint8, copy=False)
     
-    def reduce_saturation_extreme(self, img, factor=0.65):
-        """Heavy desaturation for authentic vintage look"""
+    def reduce_saturation_extreme(self, img, factor=0.78):
+        """Moderate desaturation for subtle vintage look"""
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         hsv[:, :, 1] = (hsv[:, :, 1].astype(np.float32) * factor).astype(np.uint8)
         img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
@@ -169,32 +167,32 @@ class FujiFilmProcessor:
         gc.collect()
         return img
     
-    def process_image(self, img, expired_strength=0.7):
+    def process_image(self, img, expired_strength=0.5):
         """
-        Process with extreme vintage film aesthetic
+        Process with subtle vintage film aesthetic
         """
-        print("Processing: Vintage colors...", end='', flush=True)
+        print("Processing: Film colors...", end='', flush=True)
         img = self.apply_extreme_vintage_colors(img)
         
-        print(" faded curve...", end='', flush=True)
+        print(" film curve...", end='', flush=True)
         img = self.apply_extreme_film_curve(img)
         
-        print(" desaturation...", end='', flush=True)
-        img = self.reduce_saturation_extreme(img, 0.65)
+        print(" saturation...", end='', flush=True)
+        img = self.reduce_saturation_extreme(img, 0.78)
         
-        print(" heavy grain...", end='', flush=True)
-        img = self.add_heavy_grain(img, intensity=0.025)
+        print(" grain...", end='', flush=True)
+        img = self.add_heavy_grain(img, intensity=0.015)
         
-        print(" expired effects...", end='', flush=True)
+        print(" film effects...", end='', flush=True)
         img = self.add_extreme_expired_effects(img, strength=expired_strength)
         
-        # Final warm glow
-        img = cv2.convertScaleAbs(img, alpha=1.0, beta=5)
+        # Final subtle warm glow
+        img = cv2.convertScaleAbs(img, alpha=1.0, beta=3)
         
         print(" done!")
         return img
     
-    def capture_photo(self, expired_strength=0.7, output_path=None):
+    def capture_photo(self, expired_strength=0.5, output_path=None):
         """Capture and process a photo"""
         self.photo_count += 1
         print(f"\n📷 Capturing photo #{self.photo_count}...")
@@ -210,10 +208,10 @@ class FujiFilmProcessor:
         del img
         gc.collect()
         
-        # Save
+        # Save with unique filename using counter
         if output_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"fujifilm_{timestamp}.jpg"
+            output_path = f"fujifilm_{timestamp}_{self.photo_count:03d}.jpg"
         
         print(f"Saving to {output_path}...")
         cv2.imwrite(output_path, processed, [cv2.IMWRITE_JPEG_QUALITY, 90])
@@ -244,8 +242,8 @@ def get_key():
 def interactive_mode():
     """Interactive photo capture mode"""
     print("╔═══════════════════════════════════════════════════════════╗")
-    print("║   Fujifilm Vintage Film Camera (Pi Zero 2W Optimized)    ║")
-    print("║              EXTREME VINTAGE AESTHETIC MODE               ║")
+    print("║      Fujifilm Film Camera (Pi Zero 2W Optimized)         ║")
+    print("║            SUBTLE VINTAGE FILM AESTHETIC                  ║")
     print("╚═══════════════════════════════════════════════════════════╝\n")
     
     # Resolution selection
@@ -268,17 +266,17 @@ def interactive_mode():
     print(f"\nUsing resolution: {resolution[0]}x{resolution[1]}")
     
     # Expired strength selection
-    print("\nSelect vintage intensity:")
-    print("  1 - Mild vintage (0.4)")
-    print("  2 - Strong vintage (0.7) [RECOMMENDED]")
-    print("  3 - EXTREME vintage (1.0)")
+    print("\nSelect film look intensity:")
+    print("  1 - Subtle film (0.3)")
+    print("  2 - Classic film (0.5) [RECOMMENDED]")
+    print("  3 - Aged film (0.7)")
     print("\nChoice (1-3): ", end='', flush=True)
     
     choice = get_key()
     print(choice)
     
-    strengths = {'1': 0.4, '2': 0.7, '3': 1.0}
-    expired_strength = strengths.get(choice, 0.7)
+    strengths = {'1': 0.3, '2': 0.5, '3': 0.7}
+    expired_strength = strengths.get(choice, 0.5)
     
     processor = FujiFilmProcessor(resolution=resolution)
     
