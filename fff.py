@@ -7,9 +7,9 @@ from datetime import datetime
 
 # ===== CONFIG =====
 OUTPUT_DIR = "/home/pi/Pictures"
-RESOLUTION = (1024, 768)   # Safe for Pi Zero 2 W
+RESOLUTION = (1024, 768)
 FRAME_RATE = 5
-COUNTDOWN = 3               # seconds before snap
+COUNTDOWN = 3  # seconds before snap
 # ==================
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -38,29 +38,21 @@ while True:
         time.sleep(1)
 
     # Capture frame (RGB)
-    img_rgb = picam2.capture_array()
+    img = picam2.capture_array()
     print("Photo taken!")
 
-    # Convert to BGR for OpenCV-safe processing
-    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-
-    # ===== FILM LOOK (VINTAGE FUJI) =====
-    # Lift blacks slightly and soften contrast
+    # ===== FILM LOOK (RGB SPACE!) =====
+    # Lift blacks + soften contrast
     img = cv2.convertScaleAbs(img, alpha=0.95, beta=10)
 
-    # Fujifilm tone mapping (subtle vintage effect)
-    b, g, r = cv2.split(img)
+    # Fujifilm tone mapping (RGB order)
+    r, g, b = cv2.split(img)
+    r = cv2.convertScaleAbs(r, alpha=1.08, beta=3)  # warm highlights
+    g = cv2.convertScaleAbs(g, alpha=1.05, beta=2)  # green midtones
+    b = cv2.convertScaleAbs(b, alpha=0.92, beta=0)  # cool shadows
+    img = cv2.merge([r, g, b])
 
-    # Warm reds
-    r = cv2.convertScaleAbs(r, alpha=1.08, beta=3)
-    # Slightly boost greens (Fuji midtone signature)
-    g = cv2.convertScaleAbs(g, alpha=1.05, beta=2)
-    # Slightly reduce blues in shadows
-    b = cv2.convertScaleAbs(b, alpha=0.92, beta=0)
-
-    img = cv2.merge([b, g, r])
-
-    # Subtle grain (memory-safe)
+    # Subtle grain
     grain = np.random.randint(-6, 6, img.shape, dtype=np.int16)
     img = np.clip(img.astype(np.int16) + grain, 0, 255).astype(np.uint8)
 
@@ -72,11 +64,14 @@ while True:
     mask = mask / mask.max()
     img = (img * mask[..., None]).astype(np.uint8)
 
-    # Save (already BGR)
+    # ===== SAVE IMAGE =====
+    # Convert RGB -> BGR *only once* for OpenCV saving
+    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"fuji_{timestamp}.jpg"
     path = os.path.join(OUTPUT_DIR, filename)
-    if cv2.imwrite(path, img):
+
+    if cv2.imwrite(path, img_bgr):
         print(f"Saved image to {path}")
     else:
         print("Failed to save image!")
