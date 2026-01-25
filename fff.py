@@ -2,97 +2,74 @@ from picamera2 import Picamera2
 import cv2
 import numpy as np
 import time
+import os
+from datetime import datetime
 
-# ==========================
-# ADJUSTABLE CONTROLS
-# ==========================
+# Output directory
+OUTPUT_DIR = "/home/pi/Pictures"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-EXPOSURE = 1.0     # brightness
-CONTRAST = 0.8       # 1.0 = neutral
-SATURATION = 1.10   # 1.0 = neutral
-
-S_CURVE = 0.9        # <1 = softer highlights
-VIGNETTE = 0.2       # 0–0.6 safe
-COLOR_BLEED = 0.5      # pixels
-
-WIDTH, HEIGHT = 1920, 1080
-OUTPUT = "filmic_output.jpg"
-
-# ==========================
-# CAMERA
-# ==========================
-
+# Initialize camera
 picam2 = Picamera2()
 config = picam2.create_still_configuration(
-    main={"size": (WIDTH, HEIGHT)}
+    main={"size": (2592, 1944), "format": "RGB888"}
 )
 picam2.configure(config)
 picam2.start()
+
+# Let sensor settle
 time.sleep(2)
 
+# Capture image
 frame = picam2.capture_array()
 picam2.stop()
 
-# RGBA safety
-if frame.shape[2] == 4:
-    img = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-else:
-    img = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+# Convert RGB → BGR for OpenCV
+img = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-img = img.astype(np.float32) / 255.0
+# --- FILM LOOK PROCESSING ---
 
-# ==========================
-# EXPOSURE + CONTRAST
-# ==========================
+# Slight fade (lift blacks)
+img = img.astype(np.float32)
+img = img * 0.95 + 10
 
-img = img * EXPOSURE
-img = (img - 0.5) * CONTRAST + 0.5
+# Split channels
+b, g, r = cv2.split(img)
 
-# ==========================
-# SATURATION (LUMA-BASED)
-# ==========================
+# Fujifilm-ish color bias
+r *= 1.05      # warm highlights
+g *= 1.02      # subtle green bias
+b *= 0.95      # cooler shadows
 
-luma = (
-    0.2126 * img[:, :, 2] +
-    0.7152 * img[:, :, 1] +
-    0.0722 * img[:, :, 0]
-)
+img = cv2.merge([b, g, r])
 
-img = luma[:, :, None] + SATURATION * (img - luma[:, :, None])
+# Contrast curve (soft S-curve)
+def s_curve(channel):
+    x = channel / 255.0
+    return np.clip((x - 0.5) * 0.9 + 0.5, 0, 1) * 255
 
-# ==========================
-# FILMIC S-CURVE
-# ==========================
+img = np.stack([s_curve(c) for c in cv2.split(img)], axis=-1)
 
-img = np.clip(img, 0, 1)
-img = img ** S_CURVE
+# Add grain
+grain = np.random.normal(0, 6, img.shape).astype(np.float32)
+img += grain
 
-# ==========================
-# COLOR BLEED (SAFE)
-# ==========================
-
-img[:, :, 2] = np.roll(img[:, :, 2], COLOR_BLEED, axis=1)
-img[:, :, 0] = np.roll(img[:, :, 0], -COLOR_BLEED, axis=0)
-
-# ==========================
-# VIGNETTE
-# ==========================
-
+# Slight vignette
 rows, cols = img.shape[:2]
-X = np.linspace(-1, 1, cols)
-Y = np.linspace(-1, 1, rows)
-xv, yv = np.meshgrid(X, Y)
+X_kernel = cv2.getGaussianKernel(cols, cols / 2)
+Y_kernel = cv2.getGaussianKernel(rows, rows / 2)
+kernel = Y_kernel * X_kernel.T
+vignette = kernel / kernel.max()
+img *= vignette[..., np.newaxis]
 
-v = 1 - VIGNETTE * (xv**2 + yv**2)
-v = np.clip(v, 0.6, 1)
+# Final clamp
+img = np.clip(img, 0, 255).astype(np.uint8)
 
-img *= v[:, :, None]
+# Save image
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"fuji_{timestamp}.jpg"
+path = os.path.join(OUTPUT_DIR, filename)
 
-# ==========================
-# SAVE
-# ==========================
+cv2.imwrite(path, img)
 
-img = np.clip(img * 255, 0, 255).astype(np.uint8)
-cv2.imwrite(OUTPUT, img)
-
-print("Saved", OUTPUT)
+print(f"Saved film-style image to {path}")
